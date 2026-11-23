@@ -146,6 +146,17 @@ module TestCenter::Helper::MultiScanManager
             
             expect(pool.buildlog_path_for_worker(1)).to match(%r{path/to/build/log/worker-2-logs})
           end
+
+          it 'expands the default Fastlane log path before the parent monitors it' do
+            pool = TestBatchWorkerPool.new(
+              parallel_testrun_count: 4,
+              buildlog_path: '~/Library/Logs/scan'
+            )
+
+            expect(pool.buildlog_path_for_worker(1)).to eq(
+              File.join(Dir.home, 'Library/Logs/scan/worker-2-logs')
+            )
+          end
         end
 
         describe '#derived_data_path_for_worker' do

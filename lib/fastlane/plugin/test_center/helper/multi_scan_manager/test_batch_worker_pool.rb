@@ -84,7 +84,7 @@ module TestCenter
         def buildlog_path_for_worker(worker_index)
           # ensure that simultaneous simulators are not writing to the same log
           # at the same time.
-          "#{@options[:buildlog_path]}/worker-#{worker_index + 1}-logs"
+          File.join(File.expand_path(@options[:buildlog_path]), "worker-#{worker_index + 1}-logs")
         end
 
         def derived_data_path_for_worker(worker_index)
