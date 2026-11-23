@@ -216,6 +216,16 @@ module TestCenter::Helper::MultiScanManager
           ])
         end
       end
+
+      it 'does not show an attempt for a skipped test' do
+        worker = ParallelTestBatchWorker.new(buildlog_path: '', batch_index: 0, test_batch_results: [])
+        line = "Test Case '-[BettermeUITests.ExampleUITests testSkipped]' skipped (0.1 seconds)."
+        attempts = { 'BettermeUITests.ExampleUITests testSkipped' => [1, 3] }
+
+        expect(worker.test_status_from_xcodebuild(line, attempts).uncolorize).to eq(
+          '▸ ø [ExampleUITests] testSkipped (0.1 seconds)'
+        )
+      end
     end
   end
 end

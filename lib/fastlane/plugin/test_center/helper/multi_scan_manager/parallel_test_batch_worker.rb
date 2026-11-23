@@ -180,7 +180,7 @@ module TestCenter
           end
           description = "[#{suite.split('.').last}] #{test}"
           description += " (#{duration})" if duration
-          if iteration && !(status == 'passed' && iteration[0] == 1)
+          if iteration && (status == 'failed' || (status == 'passed' && iteration[0] > 1))
             current, total = iteration
             description += " [attempt #{current}/#{total}]"
           end
