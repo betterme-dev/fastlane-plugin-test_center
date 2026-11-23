@@ -6,6 +6,7 @@ module TestCenter::Helper::MultiScanManager
         allow_any_instance_of(ParallelTestBatchWorker).to receive(:close_parent_process_writer)
         allow_any_instance_of(ParallelTestBatchWorker).to receive(:reroute_stdout_to_logfile)
         allow_any_instance_of(ParallelTestBatchWorker).to receive(:handle_child_process_results)
+        allow_any_instance_of(ParallelTestBatchWorker).to receive(:start_test_status_monitor)
       end
 
       it 'calls the parent class\'s #run method in a fork block' do
@@ -44,6 +45,7 @@ module TestCenter::Helper::MultiScanManager
         @worker = ParallelTestBatchWorker.new({ test_batch_results: [], batch_index: 2 })
         allow(@worker).to receive(:reroute_stdout_to_logfile)
         allow(@worker).to receive(:exit!)
+        allow(@worker).to receive(:start_test_status_monitor)
         logfile = StringIO.new
         @worker.instance_variable_set(:@logfile, logfile)
         
@@ -125,6 +127,62 @@ module TestCenter::Helper::MultiScanManager
         expect(mock_writer).to receive(:puts).with('false')
         expect(mock_writer).to receive(:close)
         worker.handle_child_process_results(false)
+      end
+    end
+
+    describe '#read_test_statuses' do
+      it 'reads only the current run and its attempt logs' do
+        Dir.mktmpdir do |directory|
+          old_run = File.join(directory, 'run-old', 'attempt-1')
+          current_run = File.join(directory, 'run-current', 'attempt-1')
+          FileUtils.mkdir_p([old_run, current_run])
+          File.write(File.join(old_run, 'scan.log'), "Test Case '-[BettermeUITests.ExampleUITests testOld]' passed (0.1 seconds).\n")
+          File.write(File.join(current_run, 'scan.log'), "Test Case '-[BettermeUITests.ExampleUITests testCurrent]' passed (0.1 seconds).\n")
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 0, test_batch_results: [])
+          worker.instance_variable_set(:@monitor_log_path, File.join(directory, 'run-current'))
+          output = StringIO.new
+          original_stdout = $stdout
+          $stdout = output
+          begin
+            worker.read_test_statuses({})
+          ensure
+            $stdout = original_stdout
+          end
+          expect(output.string).to eq("[worker 1] BettermeUITests.ExampleUITests/testCurrent PASSED\n")
+        end
+      end
+
+      it 'prints only new test events, including events after a log is truncated for a retry' do
+        Dir.mktmpdir do |directory|
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 1, test_batch_results: [])
+          log_path = File.join(directory, 'Betterme-Acceptance.log')
+          offsets = {}
+          output = StringIO.new
+          original_stdout = $stdout
+          $stdout = output
+          begin
+            File.write(log_path, '')
+            worker.read_test_statuses(offsets)
+            File.write(log_path, "Technical worker detail\nTest Case '-[BettermeUITests.ExampleUITests testOne]' started (Iteration 1 of 3).\n")
+            worker.read_test_statuses(offsets)
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.puts("Test Case '-[BettermeUITests.ExampleUITests testOne]' passed (1.2 seconds).") }
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.write("Test Case '-[BettermeUITests.ExampleUITests testPartial]' sta") }
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.write("rted.\n") }
+            worker.read_test_statuses(offsets)
+            File.write(log_path, "Test Case '-[BettermeUITests.ExampleUITests testTwo]' failed (0.2 seconds).\n")
+            worker.read_test_statuses(offsets)
+          ensure
+            $stdout = original_stdout
+          end
+
+          expect(output.string.lines).to eq([
+            "[worker 2] BettermeUITests.ExampleUITests/testOne PASSED\n",
+            "[worker 2] BettermeUITests.ExampleUITests/testTwo FAILED\n"
+          ])
+        end
       end
     end
   end

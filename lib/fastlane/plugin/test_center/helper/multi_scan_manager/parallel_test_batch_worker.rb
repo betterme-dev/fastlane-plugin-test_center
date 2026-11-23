@@ -1,20 +1,14 @@
 module TestCenter
   module Helper
     module MultiScanManager
-      require 'colorize'
-
-      
       class ParallelTestBatchWorker < TestBatchWorker
+        require 'securerandom'
         
         attr_reader :pid
         
         def initialize(options)
           super(options)
           @pipe_endpoint = nil
-
-          @@colors ||= String.colors - %i[white black light_green default]
-          @color = @@colors.sample
-          @@colors = @@colors - [@color]
         end
 
         def state=(new_state)
@@ -23,25 +17,25 @@ module TestCenter
 
         def process_results
           # This is performed in the Parent process
+          stop_test_status_monitor
           @pid = nil
-
-          worker_prefix = "[worker #{@options[:batch_index] + 1}] "
-          File.foreach(@log_filepath) do |line|
-            unless FastlaneCore::Helper.colors_disabled?
-              worker_prefix = worker_prefix.colorize(@color)
-            end
-            print worker_prefix
-            print line
+          result = @reader.gets
+          @reader.close
+          passed = result.to_s.chomp == 'true'
+          @options[:test_batch_results] << passed
+          unless passed
+            $stdout.puts("[worker #{@options[:batch_index] + 1}] Batch FAILED; details: #{@log_filepath}")
+            $stdout.flush
           end
-          state = :ready_to_work
-
-          @options[:test_batch_results] << (@reader.gets.chomp.to_s == 'true')
+          self.state = :ready_to_work
         end
 
         def run(run_options)
           self.state = :working
 
           open_interprocess_communication
+          @options[:buildlog_run_id] = "run-#{SecureRandom.hex(8)}"
+          @monitor_log_path = File.join(@options[:buildlog_path], @options[:buildlog_run_id]) if @options[:buildlog_path]
           @pid = Process.fork do
             tests_passed = false
             begin
@@ -57,6 +51,7 @@ module TestCenter
             end
           end
           close_parent_process_writer
+          start_test_status_monitor if @monitor_log_path
         end
 
         def print_final_results(tests_passed)
@@ -94,6 +89,77 @@ module TestCenter
 
         def close_parent_process_writer
           @writer.close
+        end
+
+        def start_test_status_monitor
+          @stop_test_status_monitor = false
+          @test_status_monitor = Thread.new do
+            offsets = {}
+            loop do
+              read_test_statuses(offsets)
+              break if @stop_test_status_monitor
+
+              sleep 0.1
+            end
+          end
+        end
+
+        def stop_test_status_monitor
+          return unless @test_status_monitor
+
+          @stop_test_status_monitor = true
+          @test_status_monitor.join
+          @test_status_monitor = nil
+        end
+
+        def read_test_statuses(offsets)
+          log_path = @monitor_log_path || @options[:buildlog_path]
+          Dir.glob(File.join(log_path, '**', '*.log')).each do |path|
+            File.open(path) do |log|
+              current = log_cursor(path, log)
+              previous = offsets[path]
+              if previous && previous[:inode] == current[:inode] &&
+                 previous[:offset] <= log.size &&
+                 log.read(previous[:prefix].bytesize) == previous[:prefix]
+                log.seek(previous[:offset], IO::SEEK_SET)
+              else
+                log.rewind
+              end
+              while (line = log.gets)
+                unless line.end_with?("\n")
+                  log.seek(-line.bytesize, IO::SEEK_CUR)
+                  break
+                end
+                status = test_status_from_xcodebuild(line)
+                if status
+                  $stdout.puts("[worker #{@options[:batch_index] + 1}] #{status}")
+                  $stdout.flush
+                end
+              end
+              current[:offset] = log.pos
+              offsets[path] = current
+            end
+          rescue Errno::ENOENT
+            # A retry can replace the log between listing and opening it.
+            offsets.delete(path)
+          end
+        end
+
+        def log_cursor(path, log = nil)
+          File.open(path) { |opened| return log_cursor(path, opened) } unless log
+
+          start = log.pos
+          log.rewind
+          prefix = log.read(256) || ''
+          log.seek(start, IO::SEEK_SET)
+          { inode: log.stat.ino, prefix: prefix, offset: log.size }
+        end
+
+        def test_status_from_xcodebuild(line)
+          match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed)(?: \([^)]*\))?\./)
+          return unless match
+
+          "#{match[1].tr(' ', '/')} #{match[2].upcase}"
         end
       end
     end
