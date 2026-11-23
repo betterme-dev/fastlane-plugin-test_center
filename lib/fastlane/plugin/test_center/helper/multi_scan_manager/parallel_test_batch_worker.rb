@@ -170,18 +170,15 @@ module TestCenter
             status = match[2]
             duration = match[3]
             iteration = attempts[match[1]]
-            device = @options[:scan_devices_override]
-            device_name = device.first.name if device&.size == 1
           else
-            match = line.match(/Test case '(.+)\.([^.'()]+)\(\)' skipped on '([^']+)'(?: \(([^)]*)\))?/)
+            match = line.match(/Test case '(.+)\.([^.'()]+)\(\)' skipped on '[^']+'(?: \(([^)]*)\))?/)
             return unless match
 
-            suite, test, device_name, duration = match.captures
+            suite, test, duration = match.captures
             status = 'skipped'
             iteration = nil
           end
           description = "[#{suite.split('.').last}] #{test}"
-          description += " on '#{device_name}'" if device_name
           description += " (#{duration})" if duration
           if iteration && !(status == 'passed' && iteration[0] == 1)
             current, total = iteration

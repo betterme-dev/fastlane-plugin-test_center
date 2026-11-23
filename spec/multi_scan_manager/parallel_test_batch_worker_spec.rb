@@ -149,11 +149,11 @@ module TestCenter::Helper::MultiScanManager
             $stdout = original_stdout
           end
           expect(output.string.uncolorize.lines).to eq([
-            "▸ ✓ [ExampleUITests] testCurrent on 'iPhone 13 Pro Max Clone 1' (0.1 seconds)\n",
-            "▸ ø [ExampleUITests] testSkipped on 'iPhone 13 Pro Max Clone 1' (0.0 seconds)\n",
-            "▸ ø [ExampleUITests] testModernSkip on 'iPhone 13 Pro Max Clone 1' (0.005 seconds)\n"
+            "▸ ✓ [ExampleUITests] testCurrent (0.1 seconds)\n",
+            "▸ ø [ExampleUITests] testSkipped (0.0 seconds)\n",
+            "▸ ø [ExampleUITests] testModernSkip (0.005 seconds)\n"
           ])
-          expect(output.string).to include("▸ ø [ExampleUITests] testSkipped on 'iPhone 13 Pro Max Clone 1' (0.0 seconds)".magenta)
+          expect(output.string).to include("▸ ø [ExampleUITests] testSkipped (0.0 seconds)".magenta)
         end
       end
 
