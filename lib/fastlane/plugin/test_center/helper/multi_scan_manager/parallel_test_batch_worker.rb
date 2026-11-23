@@ -123,15 +123,20 @@ module TestCenter
                  previous[:offset] <= log.size &&
                  log.read(previous[:prefix].bytesize) == previous[:prefix]
                 log.seek(previous[:offset], IO::SEEK_SET)
+                current[:attempts] = previous[:attempts] || {}
               else
                 log.rewind
+                current[:attempts] = {}
               end
               while (line = log.gets)
                 unless line.end_with?("\n")
                   log.seek(-line.bytesize, IO::SEEK_CUR)
                   break
                 end
-                status = test_status_from_xcodebuild(line)
+                if (attempt = line.match(/Test Case '-\[([^\]]+)\]' started \(Iteration (\d+) of (\d+)\)\./))
+                  current[:attempts][attempt[1]] = [attempt[2].to_i, attempt[3].to_i]
+                end
+                status = test_status_from_xcodebuild(line, current[:attempts])
                 if status
                   $stdout.puts(status)
                   $stdout.flush
@@ -156,7 +161,7 @@ module TestCenter
           { inode: log.stat.ino, prefix: prefix, offset: log.size }
         end
 
-        def test_status_from_xcodebuild(line)
+        def test_status_from_xcodebuild(line, attempts = {})
           match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed|skipped)(?: \(([^)]*)\))?\./)
           if match
             suite, test = match[1].split(' ', 2)
@@ -164,6 +169,7 @@ module TestCenter
 
             status = match[2]
             duration = match[3]
+            iteration = attempts[match[1]]
             device = @options[:scan_devices_override]
             device_name = device.first.name if device&.size == 1
           else
@@ -172,10 +178,15 @@ module TestCenter
 
             suite, test, device_name, duration = match.captures
             status = 'skipped'
+            iteration = nil
           end
           description = "[#{suite.split('.').last}] #{test}"
           description += " on '#{device_name}'" if device_name
           description += " (#{duration})" if duration
+          if iteration
+            current, total = iteration
+            description += " [attempt #{current}/#{total}]"
+          end
           symbol = { 'passed' => '✓', 'failed' => '✗', 'skipped' => 'ø' }.fetch(status)
           result = "▸ #{symbol} #{description}"
           status == 'failed' ? result.red : result.magenta

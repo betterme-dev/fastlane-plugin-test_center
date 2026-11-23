@@ -177,18 +177,43 @@ module TestCenter::Helper::MultiScanManager
             worker.read_test_statuses(offsets)
             File.open(log_path, 'a') { |log| log.write("rted.\n") }
             worker.read_test_statuses(offsets)
-            File.write(log_path, "Test Case '-[BettermeUITests.ExampleUITests testTwo]' failed (0.2 seconds).\n")
+            File.write(log_path, "Test Case '-[BettermeUITests.ExampleUITests testOne]' failed (0.2 seconds).\n")
             worker.read_test_statuses(offsets)
           ensure
             $stdout = original_stdout
           end
 
           expect(output.string.uncolorize.lines).to eq([
-            "▸ ✓ [ExampleUITests] testOne (1.2 seconds)\n",
-            "▸ ✗ [ExampleUITests] testTwo (0.2 seconds)\n"
+            "▸ ✓ [ExampleUITests] testOne (1.2 seconds) [attempt 1/3]\n",
+            "▸ ✗ [ExampleUITests] testOne (0.2 seconds)\n"
           ])
-          expect(output.string).to include("▸ ✓ [ExampleUITests] testOne (1.2 seconds)".magenta)
-          expect(output.string).to include("▸ ✗ [ExampleUITests] testTwo (0.2 seconds)".red)
+          expect(output.string).to include("▸ ✓ [ExampleUITests] testOne (1.2 seconds) [attempt 1/3]".magenta)
+          expect(output.string).to include("▸ ✗ [ExampleUITests] testOne (0.2 seconds)".red)
+        end
+      end
+
+      it 'prints each retry result without printing started events or worker details' do
+        Dir.mktmpdir do |directory|
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 0, test_batch_results: [])
+          log_path = File.join(directory, 'scan.log')
+          offsets = {}
+          output = StringIO.new
+          original_stdout = $stdout
+          $stdout = output
+          begin
+            File.write(log_path, "Worker detail\nTest Case '-[BettermeUITests.ExampleUITests testRetry]' started (Iteration 1 of 3).\nTest Case '-[BettermeUITests.ExampleUITests testRetry]' failed (1.0 seconds).\n")
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.write("Test Case '-[BettermeUITests.ExampleUITests testRetry]' started (Iteration 2 of 3).\nTest Case '-[BettermeUITests.ExampleUITests testRetry]' passed (0.8 seconds).\n") }
+            worker.read_test_statuses(offsets)
+            worker.read_test_statuses(offsets)
+          ensure
+            $stdout = original_stdout
+          end
+
+          expect(output.string.uncolorize.lines).to eq([
+            "▸ ✗ [ExampleUITests] testRetry (1.0 seconds) [attempt 1/3]\n",
+            "▸ ✓ [ExampleUITests] testRetry (0.8 seconds) [attempt 2/3]\n"
+          ])
         end
       end
     end
