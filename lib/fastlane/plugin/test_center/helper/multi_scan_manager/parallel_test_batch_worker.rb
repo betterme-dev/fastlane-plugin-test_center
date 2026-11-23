@@ -183,7 +183,7 @@ module TestCenter
           description = "[#{suite.split('.').last}] #{test}"
           description += " on '#{device_name}'" if device_name
           description += " (#{duration})" if duration
-          if iteration
+          if iteration && !(status == 'passed' && iteration[0] == 1)
             current, total = iteration
             description += " [attempt #{current}/#{total}]"
           end

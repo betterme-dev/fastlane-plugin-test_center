@@ -184,10 +184,10 @@ module TestCenter::Helper::MultiScanManager
           end
 
           expect(output.string.uncolorize.lines).to eq([
-            "▸ ✓ [ExampleUITests] testOne (1.2 seconds) [attempt 1/3]\n",
+            "▸ ✓ [ExampleUITests] testOne (1.2 seconds)\n",
             "▸ ✗ [ExampleUITests] testOne (0.2 seconds)\n"
           ])
-          expect(output.string).to include("▸ ✓ [ExampleUITests] testOne (1.2 seconds) [attempt 1/3]".magenta)
+          expect(output.string).to include("▸ ✓ [ExampleUITests] testOne (1.2 seconds)".magenta)
           expect(output.string).to include("▸ ✗ [ExampleUITests] testOne (0.2 seconds)".red)
         end
       end
