@@ -157,7 +157,7 @@ module TestCenter
         end
 
         def test_status_from_xcodebuild(line)
-          match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed)(?: \(([^)]*)\))?\./)
+          match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed|skipped)(?: \(([^)]*)\))?\./)
           return unless match
 
           suite, test = match[1].split(' ', 2)
@@ -168,9 +168,10 @@ module TestCenter
           description = "[#{suite.split('.').last}] #{test}"
           description += " on '#{device_name}'" if device_name
           description += " (#{match[3]})" if match[3]
-          passed = match[2] == 'passed'
-          result = "▸ #{passed ? '✓' : '✗'} #{description}"
-          passed ? result.magenta : result.red
+          status = match[2]
+          symbol = { 'passed' => '✓', 'failed' => '✗', 'skipped' => 'ø' }.fetch(status)
+          result = "▸ #{symbol} #{description}"
+          status == 'failed' ? result.red : result.magenta
         end
       end
     end
