@@ -158,17 +158,24 @@ module TestCenter
 
         def test_status_from_xcodebuild(line)
           match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed|skipped)(?: \(([^)]*)\))?\./)
-          return unless match
+          if match
+            suite, test = match[1].split(' ', 2)
+            return unless test
 
-          suite, test = match[1].split(' ', 2)
-          return unless test
+            status = match[2]
+            duration = match[3]
+            device = @options[:scan_devices_override]
+            device_name = device.first.name if device&.size == 1
+          else
+            match = line.match(/Test case '(.+)\.([^.'()]+)\(\)' skipped on '([^']+)'(?: \(([^)]*)\))?/)
+            return unless match
 
-          device = @options[:scan_devices_override]
-          device_name = device.first.name if device&.size == 1
+            suite, test, device_name, duration = match.captures
+            status = 'skipped'
+          end
           description = "[#{suite.split('.').last}] #{test}"
           description += " on '#{device_name}'" if device_name
-          description += " (#{match[3]})" if match[3]
-          status = match[2]
+          description += " (#{duration})" if duration
           symbol = { 'passed' => '✓', 'failed' => '✗', 'skipped' => 'ø' }.fetch(status)
           result = "▸ #{symbol} #{description}"
           status == 'failed' ? result.red : result.magenta
