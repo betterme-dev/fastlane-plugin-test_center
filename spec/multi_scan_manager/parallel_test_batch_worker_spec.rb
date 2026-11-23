@@ -138,7 +138,7 @@ module TestCenter::Helper::MultiScanManager
           FileUtils.mkdir_p([old_run, current_run])
           File.write(File.join(old_run, 'scan.log'), "Test Case '-[BettermeUITests.ExampleUITests testOld]' passed (0.1 seconds).\n")
           File.write(File.join(current_run, 'scan.log'), "Test Case '-[BettermeUITests.ExampleUITests testCurrent]' passed (0.1 seconds).\n")
-          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 0, test_batch_results: [])
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 0, test_batch_results: [], scan_devices_override: [OpenStruct.new(name: 'iPhone 13 Pro Max Clone 1')])
           worker.instance_variable_set(:@monitor_log_path, File.join(directory, 'run-current'))
           output = StringIO.new
           original_stdout = $stdout
@@ -148,7 +148,7 @@ module TestCenter::Helper::MultiScanManager
           ensure
             $stdout = original_stdout
           end
-          expect(output.string).to eq("[worker 1] BettermeUITests.ExampleUITests/testCurrent PASSED\n")
+          expect(output.string.uncolorize).to eq("▸ ✓ [ExampleUITests] testCurrent on 'iPhone 13 Pro Max Clone 1' (0.1 seconds)\n")
         end
       end
 
@@ -178,10 +178,12 @@ module TestCenter::Helper::MultiScanManager
             $stdout = original_stdout
           end
 
-          expect(output.string.lines).to eq([
-            "[worker 2] BettermeUITests.ExampleUITests/testOne PASSED\n",
-            "[worker 2] BettermeUITests.ExampleUITests/testTwo FAILED\n"
+          expect(output.string.uncolorize.lines).to eq([
+            "▸ ✓ [ExampleUITests] testOne (1.2 seconds)\n",
+            "▸ ✗ [ExampleUITests] testTwo (0.2 seconds)\n"
           ])
+          expect(output.string).to include("▸ ✓ [ExampleUITests] testOne (1.2 seconds)".magenta)
+          expect(output.string).to include("▸ ✗ [ExampleUITests] testTwo (0.2 seconds)".red)
         end
       end
     end

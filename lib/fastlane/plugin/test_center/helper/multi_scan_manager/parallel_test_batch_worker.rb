@@ -3,6 +3,7 @@ module TestCenter
     module MultiScanManager
       class ParallelTestBatchWorker < TestBatchWorker
         require 'securerandom'
+        require 'colorize'
         
         attr_reader :pid
         
@@ -132,7 +133,7 @@ module TestCenter
                 end
                 status = test_status_from_xcodebuild(line)
                 if status
-                  $stdout.puts("[worker #{@options[:batch_index] + 1}] #{status}")
+                  $stdout.puts(status)
                   $stdout.flush
                 end
               end
@@ -156,10 +157,20 @@ module TestCenter
         end
 
         def test_status_from_xcodebuild(line)
-          match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed)(?: \([^)]*\))?\./)
+          match = line.match(/Test Case '-\[([^\]]+)\]' (passed|failed)(?: \(([^)]*)\))?\./)
           return unless match
 
-          "#{match[1].tr(' ', '/')} #{match[2].upcase}"
+          suite, test = match[1].split(' ', 2)
+          return unless test
+
+          device = @options[:scan_devices_override]
+          device_name = device.first.name if device&.size == 1
+          description = "[#{suite.split('.').last}] #{test}"
+          description += " on '#{device_name}'" if device_name
+          description += " (#{match[3]})" if match[3]
+          passed = match[2] == 'passed'
+          result = "▸ #{passed ? '✓' : '✗'} #{description}"
+          passed ? result.magenta : result.red
         end
       end
     end
