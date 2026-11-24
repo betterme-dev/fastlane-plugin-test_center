@@ -42,8 +42,6 @@ module TestCenter
 
               if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
                 begin
-                  Process.kill('TERM', -pid)
-                  sleep 0.2
                   Process.kill('KILL', -pid)
                 rescue Errno::ESRCH
                   # The process group exited while the deadline was being handled.
