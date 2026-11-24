@@ -200,6 +200,58 @@ module TestCenter::Helper::MultiScanManager
     end
 
     describe '#run_test_batches' do
+      it 'waits for a serial simulator before starting its callback or worker' do
+        events = []
+        device = OpenStruct.new(udid: 'B00')
+        allow(device).to receive(:boot) { events << :boot }
+        allow(Scan).to receive(:devices).and_return([OpenStruct.new(udid: 'A00')])
+        allow(Scan).to receive(:config).and_return(destination: ['platform=iOS Simulator,id=B00'])
+        allow(FastlaneCore::DeviceManager).to receive(:simulators).with('iOS').and_return([device])
+        worker = OpenStruct.new
+        allow(worker).to receive(:run) { events << :run }
+        pool = OpenStruct.new
+        allow(pool).to receive(:setup_workers)
+        allow(pool).to receive(:wait_for_worker).and_return(worker)
+        allow(pool).to receive(:wait_for_all_workers)
+        allow(TestBatchWorkerPool).to receive(:new).and_return(pool)
+
+        runner = Runner.new(
+          platform: :ios_simulator,
+          try_count: 1,
+          simulator_started_callback: proc { |udid| events << [:callback, udid] }
+        )
+        runner.run_test_batches
+
+        expect(events).to eq([:boot, [:callback, 'B00'], :run])
+      end
+
+      it 'waits for a serial invocation batch with only_testing set' do
+        events = []
+        device = OpenStruct.new(udid: 'A00')
+        allow(device).to receive(:boot) { events << :boot }
+        allow(Scan).to receive(:devices).and_return([device])
+        allow(Scan).to receive(:config).and_return(destination: ['platform=iOS Simulator,id=A00'])
+        allow(FastlaneCore::DeviceManager).to receive(:simulators).with('iOS').and_return([device])
+        worker = OpenStruct.new
+        allow(worker).to receive(:run) { events << :run }
+        pool = OpenStruct.new
+        allow(pool).to receive(:setup_workers)
+        allow(pool).to receive(:wait_for_worker).and_return(worker)
+        allow(pool).to receive(:wait_for_all_workers)
+        allow(TestBatchWorkerPool).to receive(:new).and_return(pool)
+
+        runner = Runner.new(
+          platform: :ios_simulator,
+          try_count: 1,
+          invocation_based_tests: true,
+          only_testing: ['MockTest'],
+          quit_simulators: false
+        )
+        runner.run_test_batches
+
+        expect(events).to eq([:boot, :run])
+      end
+
       describe 'serial batches' do
         it 'calls a test_worker for each test batch' do
           mocked_testbatch_worker = OpenStruct.new

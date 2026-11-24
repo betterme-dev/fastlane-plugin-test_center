@@ -1,3 +1,5 @@
+require_relative 'simulator_booter'
+
 module FastlaneCore
   class DeviceManager
     class Device
@@ -32,11 +34,10 @@ module FastlaneCore
       def boot
         return unless is_simulator
         return unless os_type == "iOS"
-        return if self.state == 'Booted'
+        UI.message("Waiting for simulator #{self} to finish booting")
 
-        UI.message("Booting #{self}")
+        TestCenter::Helper::MultiScanManager::SimulatorBooter.boot(self.udid)
 
-        `xcrun simctl boot #{self.udid} 2>/dev/null`
         self.state = 'Booted'
       end
 
@@ -46,7 +47,7 @@ module FastlaneCore
         return if self.state == 'Shutdown'
 
         UI.message("Shutting down #{self.udid}")
-        `xcrun simctl shutdown #{self.udid} 2>/dev/null`
+        TestCenter::Helper::MultiScanManager::SimulatorBooter.shutdown(self.udid)
         self.state = 'Shutdown'
       end
     end

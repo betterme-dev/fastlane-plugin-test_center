@@ -111,6 +111,20 @@ module TestCenter::Helper::MultiScanManager
         end
 
         describe '#setup_cloned_simulators' do
+          it 'does not call the callback or create workers if a clone fails to finish booting' do
+            pool = TestBatchWorkerPool.new(
+              parallel_testrun_count: 4,
+              platform: :ios_simulator,
+              simulator_started_callback: proc {}
+            )
+            allow(pool).to receive(:at_exit)
+            allow(@mocked_cloned_simulators[1][0]).to receive(:boot).and_raise('boot failed')
+            expect(SimulatorHelper).not_to receive(:call_simulator_started_callback)
+            expect(ParallelTestBatchWorker).not_to receive(:new)
+
+            expect { pool.setup_workers }.to raise_error('boot failed')
+          end
+
           it 'clones simulators' do
             pool = TestBatchWorkerPool.new({parallel_testrun_count: 4, platform: :ios_simulator})
             expect(@mocked_simulator_helper).to receive(:parallel_destination_simulators).and_return(@mocked_cloned_simulators)

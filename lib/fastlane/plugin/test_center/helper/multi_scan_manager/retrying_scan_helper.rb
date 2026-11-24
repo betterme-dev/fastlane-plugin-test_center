@@ -1,3 +1,5 @@
+require_relative 'simulator_booter'
+
 module TestCenter
   module Helper
     module MultiScanManager
@@ -114,10 +116,12 @@ module TestCenter
           return unless @options[:quit_simulators]
 
           @options.fetch(:destination).each do |destination|
+            next unless destination.include?('platform=iOS Simulator')
+
             if /id=(?<udid>[^,$]+)/ =~ destination
               FastlaneCore::UI.verbose("Restarting Simulator #{udid}")
-              `xcrun simctl shutdown #{udid} 2>/dev/null`
-              `xcrun simctl boot #{udid} 2>/dev/null`
+              SimulatorBooter.shutdown(udid)
+              SimulatorBooter.boot(udid)
             end
           end
         end
