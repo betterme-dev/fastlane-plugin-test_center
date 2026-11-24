@@ -19,9 +19,18 @@ module TestCenter
             @options[:custom_report_file_name]
           )
           @callback_overrides_only_testing = false
+          @lost_batch_retries = 0
+          @retry_lost_batch = false
+        end
+
+        # True when the last testrun died before it could run a single test. RetryingScan runs the
+        # batch again on it, outside of :try_count, which is about tests that ran and failed.
+        def retry_lost_batch?
+          @retry_lost_batch
         end
 
         def before_testrun
+          @retry_lost_batch = false
           if @parallel_buildlog_path
             run_id = @options[:buildlog_run_id] || "run-#{Process.pid}"
             @options[:buildlog_path] = File.join(@parallel_buildlog_path, run_id, "attempt-#{@testrun_count + 1}")
@@ -383,12 +392,48 @@ module TestCenter
               Fastlane::Actions::RestartCoreSimulatorServiceAction.run
             end
           else
-            FastlaneCore::UI.error(test_session_last_messages)
-            send_callback_testrun_info(test_operation_failure: failure)
-            raise exception
-            FastlaneCore::UI.important(test_session_last_messages)
+            if batch_lost_before_any_test?
+              @lost_batch_retries += 1
+              @retry_lost_batch = true
+              FastlaneCore::UI.important("Batch ##{@options[:batch]} died before its first test; running it again")
+            else
+              FastlaneCore::UI.error(test_session_last_messages)
+              send_callback_testrun_info(test_operation_failure: failure)
+              raise exception
+              FastlaneCore::UI.important(test_session_last_messages)
+            end
           end
           send_callback_testrun_info(test_operation_failure: failure)
+        end
+
+        # A test session can die before it runs anything — the simulator refuses to launch the test
+        # runner, say — and then the batch's xcresult is written with no tests in it and every test
+        # it was given disappears from the report. Nothing ran, so running the whole batch again
+        # cannot duplicate a result, which is what makes this safe to do without :try_count.
+        def batch_lost_before_any_test?
+          return false if @lost_batch_retries >= lost_batch_retry_count
+
+          !any_test_started?
+        end
+
+        def lost_batch_retry_count
+          @options.fetch(:lost_batch_retry_count, 1)
+        end
+
+        # Read from the build log rather than the xcresult: it is the same source the realtime
+        # results read, it needs no xcresulttool, and it stops at the first test it finds.
+        def any_test_started?
+          logfile = current_buildlog
+          return true if logfile.nil?
+
+          File.foreach(logfile).any? { |line| line.start_with?("Test Case '") }
+        end
+
+        def current_buildlog
+          buildlog_path = @options[:buildlog_path]
+          return nil if buildlog_path.nil?
+
+          Dir.glob(File.join(File.expand_path(buildlog_path), '*.log')).max_by { |logfile| File.mtime(logfile) }
         end
 
         def retrieve_test_operation_failure(test_session_last_messages)

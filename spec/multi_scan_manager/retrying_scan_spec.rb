@@ -111,6 +111,30 @@ module TestCenter::Helper::MultiScanManager
         retrying_scan.run
       end
 
+      it 'runs the batch again when the test session died before its first test' do
+        expect(@mock_scan_runner).to receive(:run).ordered.once do |config|
+          raise FastlaneCore::Interface::FastlaneBuildFailure, 'test runner never launched'
+        end
+        expect(@mock_scan_runner).to receive(:run).ordered.once
+        allow(@mock_retrying_scan_helper).to receive(:testrun_count).and_return(1)
+        allow(@mock_retrying_scan_helper).to receive(:retry_lost_batch?).and_return(true, false)
+
+        retrying_scan = RetryingScan.new
+        expect(retrying_scan.run).to be(true)
+      end
+
+      it 'does not run the batch again when the lost run still reported tests' do
+        expect(@mock_scan_runner).to receive(:run).ordered.once do |config|
+          raise FastlaneCore::Interface::FastlaneBuildFailure, 'died after a few tests'
+        end
+        expect(@mock_scan_runner).not_to receive(:run).ordered
+        allow(@mock_retrying_scan_helper).to receive(:testrun_count).and_return(1)
+        allow(@mock_retrying_scan_helper).to receive(:retry_lost_batch?).and_return(false)
+
+        retrying_scan = RetryingScan.new
+        expect(retrying_scan.run).to be(false)
+      end
+
       it 'calls retrying_scan_helper.after_testrun 3 times when there are 3 re-runs' do
         expect(@mock_scan_runner).to receive(:run).ordered.once do |config|
           raise FastlaneCore::Interface::FastlaneTestFailure, 'failed tests'

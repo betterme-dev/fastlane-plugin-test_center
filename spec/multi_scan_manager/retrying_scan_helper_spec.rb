@@ -354,6 +354,62 @@ module TestCenter::Helper::MultiScanManager
       end
     end
 
+    describe 'a batch that died before its first test' do
+      around(:each) do |example|
+        Dir.mktmpdir do |buildlog_path|
+          @buildlog_path = File.join(buildlog_path, 'run-example', 'attempt-1')
+          FileUtils.mkdir_p(@buildlog_path)
+          example.run
+        end
+      end
+
+      def helper_for(buildlog, options = {})
+        File.write(File.join(@buildlog_path, 'AtomicBoy.log'), buildlog)
+        helper = RetryingScanHelper.new(
+          { buildlog_path: @buildlog_path, destination: "platform=iOS Simulator,id=A00" }.merge(options)
+        )
+        allow(FastlaneCore::Helper).to receive(:xcode_at_least?).and_return(true)
+        allow(helper).to receive(:last_lines_of_test_session_log).and_return('')
+        helper
+      end
+
+      it 'is retried instead of failing the worker' do
+        helper = helper_for("Testing started\n\n*** If you believe this error represents a bug\n")
+
+        expect { helper.handle_build_failure(FastlaneCore::Interface::FastlaneBuildFailure) }.not_to raise_error
+        expect(helper.retry_lost_batch?).to be(true)
+      end
+
+      it 'is not retried when the run reported a test, as re-running would duplicate it' do
+        helper = helper_for("Test Case '-[AtomicBoyUITests testExample]' started.\nTesting failed\n")
+
+        expect { helper.handle_build_failure(FastlaneCore::Interface::FastlaneBuildFailure) }.to(
+          raise_error(FastlaneCore::Interface::FastlaneBuildFailure)
+        )
+      end
+
+      it 'is not retried more often than :lost_batch_retry_count allows' do
+        helper = helper_for("Testing started\n", lost_batch_retry_count: 1)
+
+        helper.handle_build_failure(FastlaneCore::Interface::FastlaneBuildFailure)
+        expect(helper.retry_lost_batch?).to be(true)
+
+        expect { helper.handle_build_failure(FastlaneCore::Interface::FastlaneBuildFailure) }.to(
+          raise_error(FastlaneCore::Interface::FastlaneBuildFailure)
+        )
+      end
+
+      it 'is not retried when there is no build log to judge by' do
+        helper = RetryingScanHelper.new(destination: "platform=iOS Simulator,id=A00")
+        allow(FastlaneCore::Helper).to receive(:xcode_at_least?).and_return(true)
+        allow(helper).to receive(:last_lines_of_test_session_log).and_return('')
+
+        expect { helper.handle_build_failure(FastlaneCore::Interface::FastlaneBuildFailure) }.to(
+          raise_error(FastlaneCore::Interface::FastlaneBuildFailure)
+        )
+      end
+    end
+
     describe 'scan_options' do
       it 'has the tests to be tested' do
         helper = RetryingScanHelper.new(

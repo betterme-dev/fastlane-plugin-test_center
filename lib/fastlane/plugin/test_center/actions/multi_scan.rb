@@ -370,6 +370,14 @@ module Fastlane
             default_value: 1
           ),
           FastlaneCore::ConfigItem.new(
+            key: :lost_batch_retry_count,
+            env_name: "FL_MULTI_SCAN_LOST_BATCH_RETRY_COUNT",
+            description: "The number of times to run a batch again when its test session died before a single test ran. Unlike :try_count this cannot duplicate a result, because nothing ran. Set to 0 to turn it off",
+            type: Integer,
+            is_string: false,
+            default_value: 1
+          ),
+          FastlaneCore::ConfigItem.new(
             key: :batch_count,
             env_name: "FL_MULTI_SCAN_BATCH_COUNT",
             description: "The number of test batches to run through scan. Can be combined with :try_count",
