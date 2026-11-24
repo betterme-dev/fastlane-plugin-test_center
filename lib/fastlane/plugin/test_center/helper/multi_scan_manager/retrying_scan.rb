@@ -27,6 +27,9 @@ module TestCenter
           rescue FastlaneCore::Interface::FastlaneBuildFailure => e
             @retrying_scan_helper.after_testrun(e)
             retry if @retrying_scan_helper.testrun_count < try_count
+            # A batch that died before its first test ran nothing, so it is run again whatever
+            # :try_count says — that count is about tests that ran and failed
+            retry if @retrying_scan_helper.retry_lost_batch?
             false
           end
         end
