@@ -9,6 +9,7 @@ module TestCenter
           raise ArgumentError, 'Do not use the :device or :devices option. Instead use the :destination option.' if (options.key?(:device) or options.key?(:devices))
 
           @options = options
+          @parallel_buildlog_path = @options[:buildlog_path] if @options.key?(:batch_index)
           FastlaneCore::UI.verbose("RetryingScanHelper.initialize with ':output' as \"#{@options[:output_directory]}\"")
           @testrun_count = 0
           @xcpretty_json_file_output = ENV['XCPRETTY_JSON_FILE_OUTPUT']
@@ -21,6 +22,10 @@ module TestCenter
         end
 
         def before_testrun
+          if @parallel_buildlog_path
+            run_id = @options[:buildlog_run_id] || "run-#{Process.pid}"
+            @options[:buildlog_path] = File.join(@parallel_buildlog_path, run_id, "attempt-#{@testrun_count + 1}")
+          end
           delete_xcresults # has to be performed _after_ moving a *.test_result
           quit_simulator
           set_json_env

@@ -6,6 +6,7 @@ module TestCenter::Helper::MultiScanManager
         allow_any_instance_of(ParallelTestBatchWorker).to receive(:close_parent_process_writer)
         allow_any_instance_of(ParallelTestBatchWorker).to receive(:reroute_stdout_to_logfile)
         allow_any_instance_of(ParallelTestBatchWorker).to receive(:handle_child_process_results)
+        allow_any_instance_of(ParallelTestBatchWorker).to receive(:start_test_status_monitor)
       end
 
       it 'calls the parent class\'s #run method in a fork block' do
@@ -44,6 +45,7 @@ module TestCenter::Helper::MultiScanManager
         @worker = ParallelTestBatchWorker.new({ test_batch_results: [], batch_index: 2 })
         allow(@worker).to receive(:reroute_stdout_to_logfile)
         allow(@worker).to receive(:exit!)
+        allow(@worker).to receive(:start_test_status_monitor)
         logfile = StringIO.new
         @worker.instance_variable_set(:@logfile, logfile)
         
@@ -125,6 +127,104 @@ module TestCenter::Helper::MultiScanManager
         expect(mock_writer).to receive(:puts).with('false')
         expect(mock_writer).to receive(:close)
         worker.handle_child_process_results(false)
+      end
+    end
+
+    describe '#read_test_statuses' do
+      it 'reads only the current run and its attempt logs' do
+        Dir.mktmpdir do |directory|
+          old_run = File.join(directory, 'run-old', 'attempt-1')
+          current_run = File.join(directory, 'run-current', 'attempt-1')
+          FileUtils.mkdir_p([old_run, current_run])
+          File.write(File.join(old_run, 'scan.log'), "Test Case '-[BettermeUITests.ExampleUITests testOld]' passed (0.1 seconds).\n")
+          File.write(File.join(current_run, 'scan.log'), "Test Case '-[BettermeUITests.ExampleUITests testCurrent]' passed (0.1 seconds).\nTest Case '-[BettermeUITests.ExampleUITests testSkipped]' skipped (0.0 seconds).\nTest case 'BettermeUITests.ExampleUITests.testModernSkip()' skipped on 'iPhone 13 Pro Max Clone 1' (0.005 seconds)\n")
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 0, test_batch_results: [], scan_devices_override: [OpenStruct.new(name: 'iPhone 13 Pro Max Clone 1')])
+          worker.instance_variable_set(:@monitor_log_path, File.join(directory, 'run-current'))
+          output = StringIO.new
+          original_stdout = $stdout
+          $stdout = output
+          begin
+            worker.read_test_statuses({})
+          ensure
+            $stdout = original_stdout
+          end
+          expect(output.string.uncolorize.lines).to eq([
+            "▸ ✓ [ExampleUITests] testCurrent (0.1 seconds)\n",
+            "▸ ø [ExampleUITests] testSkipped (0.0 seconds)\n",
+            "▸ ø [ExampleUITests] testModernSkip (0.005 seconds)\n"
+          ])
+          expect(output.string).to include("▸ ø [ExampleUITests] testSkipped (0.0 seconds)".magenta)
+        end
+      end
+
+      it 'prints only new test events, including events after a log is truncated for a retry' do
+        Dir.mktmpdir do |directory|
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 1, test_batch_results: [])
+          log_path = File.join(directory, 'Betterme-Acceptance.log')
+          offsets = {}
+          output = StringIO.new
+          original_stdout = $stdout
+          $stdout = output
+          begin
+            File.write(log_path, '')
+            worker.read_test_statuses(offsets)
+            File.write(log_path, "Technical worker detail\nTest Case '-[BettermeUITests.ExampleUITests testOne]' started (Iteration 1 of 3).\n")
+            worker.read_test_statuses(offsets)
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.puts("Test Case '-[BettermeUITests.ExampleUITests testOne]' passed (1.2 seconds).") }
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.write("Test Case '-[BettermeUITests.ExampleUITests testPartial]' sta") }
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.write("rted.\n") }
+            worker.read_test_statuses(offsets)
+            File.write(log_path, "Test Case '-[BettermeUITests.ExampleUITests testOne]' failed (0.2 seconds).\n")
+            worker.read_test_statuses(offsets)
+          ensure
+            $stdout = original_stdout
+          end
+
+          expect(output.string.uncolorize.lines).to eq([
+            "▸ ✓ [ExampleUITests] testOne (1.2 seconds)\n",
+            "▸ ✗ [ExampleUITests] testOne (0.2 seconds)\n"
+          ])
+          expect(output.string).to include("▸ ✓ [ExampleUITests] testOne (1.2 seconds)".magenta)
+          expect(output.string).to include("▸ ✗ [ExampleUITests] testOne (0.2 seconds)".red)
+        end
+      end
+
+      it 'prints each retry result without printing started events or worker details' do
+        Dir.mktmpdir do |directory|
+          worker = ParallelTestBatchWorker.new(buildlog_path: directory, batch_index: 0, test_batch_results: [])
+          log_path = File.join(directory, 'scan.log')
+          offsets = {}
+          output = StringIO.new
+          original_stdout = $stdout
+          $stdout = output
+          begin
+            File.write(log_path, "Worker detail\nTest Case '-[BettermeUITests.ExampleUITests testRetry]' started (Iteration 1 of 3).\nTest Case '-[BettermeUITests.ExampleUITests testRetry]' failed (1.0 seconds).\n")
+            worker.read_test_statuses(offsets)
+            File.open(log_path, 'a') { |log| log.write("Test Case '-[BettermeUITests.ExampleUITests testRetry]' started (Iteration 2 of 3).\nTest Case '-[BettermeUITests.ExampleUITests testRetry]' passed (0.8 seconds).\n") }
+            worker.read_test_statuses(offsets)
+            worker.read_test_statuses(offsets)
+          ensure
+            $stdout = original_stdout
+          end
+
+          expect(output.string.uncolorize.lines).to eq([
+            "▸ ✗ [ExampleUITests] testRetry (1.0 seconds) [attempt 1/3]\n",
+            "▸ ✓ [ExampleUITests] testRetry (0.8 seconds) [attempt 2/3]\n"
+          ])
+        end
+      end
+
+      it 'does not show an attempt for a skipped test' do
+        worker = ParallelTestBatchWorker.new(buildlog_path: '', batch_index: 0, test_batch_results: [])
+        line = "Test Case '-[BettermeUITests.ExampleUITests testSkipped]' skipped (0.1 seconds)."
+        attempts = { 'BettermeUITests.ExampleUITests testSkipped' => [1, 3] }
+
+        expect(worker.test_status_from_xcodebuild(line, attempts).uncolorize).to eq(
+          '▸ ø [ExampleUITests] testSkipped (0.1 seconds)'
+        )
       end
     end
   end

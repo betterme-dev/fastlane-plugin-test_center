@@ -72,7 +72,9 @@ module TestCenter
           if @options[:platform] == :ios_simulator
             options[:scan_devices_override] = simulator_devices_for_worker(worker_index)
           end
-          options[:buildlog_path] = buildlog_path_for_worker(worker_index) if @options[:buildlog_path]
+          # Give each worker a dedicated raw xcodebuild log. The parent tails it
+          # while the child runs, even when the caller did not set buildlog_path.
+          options[:buildlog_path] = @options[:buildlog_path] ? buildlog_path_for_worker(worker_index) : Dir.mktmpdir("multi-scan-worker-#{worker_index + 1}-logs-")
           options[:derived_data_path] = derived_data_path_for_worker(worker_index)
           options[:batch_index] = worker_index
           options[:test_batch_results] = @options[:test_batch_results]
@@ -82,7 +84,7 @@ module TestCenter
         def buildlog_path_for_worker(worker_index)
           # ensure that simultaneous simulators are not writing to the same log
           # at the same time.
-          "#{@options[:buildlog_path]}/worker-#{worker_index + 1}-logs"
+          File.join(File.expand_path(@options[:buildlog_path]), "worker-#{worker_index + 1}-logs")
         end
 
         def derived_data_path_for_worker(worker_index)

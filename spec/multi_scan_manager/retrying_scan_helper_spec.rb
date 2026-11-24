@@ -25,6 +25,22 @@ module TestCenter::Helper::MultiScanManager
     end
 
     describe 'before_testrun' do
+      it 'uses separate build logs for each parallel attempt' do
+        helper = RetryingScanHelper.new(buildlog_path: '/tmp/worker-2-logs', batch_index: 1, buildlog_run_id: 'run-example')
+        allow(helper).to receive(:delete_xcresults)
+        allow(helper).to receive(:quit_simulator)
+        allow(helper).to receive(:set_json_env)
+        allow(helper).to receive(:set_scan_config)
+        allow(helper).to receive(:print_starting_scan_message)
+
+        helper.before_testrun
+        expect(helper.scan_options[:buildlog_path]).to eq('/tmp/worker-2-logs/run-example/attempt-1')
+
+        helper.instance_variable_set(:@testrun_count, 1)
+        helper.before_testrun
+        expect(helper.scan_options[:buildlog_path]).to eq('/tmp/worker-2-logs/run-example/attempt-2')
+      end
+
       it 'clears out pre-existing xcresult directory', :skip => "reportname_helper is being refactored" do
         allow(Dir).to receive(:glob).with(%r{/.*/path/to/AtomicBoy-flqqvvvzbouqymbyffgdbtjoiufr/.*\.xcresult}).and_return(['./AtomicDragon.xcresult'])
         helper = RetryingScanHelper.new(
