@@ -187,7 +187,8 @@ module TestCenter
           options = @options.reject { |key| %i[device devices force_quit_simulator].include?(key) }
           options[:try_count] = 1
 
-          SimulatorHelper.call_simulator_started_callback(@options, Scan.devices)
+          booted_simulators = boot_destination_simulators
+          SimulatorHelper.call_simulator_started_callback(@options, booted_simulators)
 
           tests_passed = RetryingScan.run(options)
           @options[:try_count] -= 1
@@ -235,8 +236,9 @@ module TestCenter
           pool_options[:xctestrun] = @test_collector.xctestrun_path
 
           serial_test_batches = (@options.fetch(:parallel_testrun_count, 1) == 1)
-          if serial_test_batches && !@options[:invocation_based_tests]
-            SimulatorHelper.call_simulator_started_callback(@options, Scan.devices)
+          if serial_test_batches
+            booted_simulators = boot_destination_simulators
+            SimulatorHelper.call_simulator_started_callback(@options, booted_simulators) unless @options[:invocation_based_tests]
           end
 
           pool = TestBatchWorkerPool.new(pool_options)
@@ -252,6 +254,41 @@ module TestCenter
           collate_batched_reports
           FastlaneCore::UI.verbose("Results for each test run: #{test_batch_results}")
           test_batch_results.all?
+        end
+
+        def boot_destination_simulators
+          return [] unless @options[:platform] == :ios_simulator
+
+          simulators = FastlaneCore::DeviceManager.simulators('iOS')
+          destinations = Scan.config[:destination].to_a
+          return Scan.devices.to_a.each(&:boot) if destinations.empty?
+
+          destinations.flat_map do |destination|
+            udid = destination[/\bid=([^,]+)/, 1]
+            name = destination[/\bname=([^,]+)/, 1]
+            os_version = destination[/\bOS=([^,]+)/, 1]
+
+            matching_simulators = if udid
+                                    simulators.select { |simulator| simulator.udid == udid }
+                                  elsif name
+                                    simulators.select do |simulator|
+                                      simulator.name == name && (os_version.nil? || os_version == 'latest' || simulator.os_version == os_version)
+                                    end
+                                  else
+                                    Scan.devices.to_a
+                                  end
+            if os_version == 'latest' && matching_simulators.any?
+              latest_version = matching_simulators.map { |simulator| Gem::Version.new(simulator.os_version) }.max
+              matching_simulators.select! { |simulator| Gem::Version.new(simulator.os_version) == latest_version }
+            end
+
+            if matching_simulators.empty?
+              FastlaneCore::UI.user_error!("No simulator matches destination '#{destination}'. Check the destination's name, OS version or id.")
+            end
+
+            matching_simulators.each(&:boot)
+            matching_simulators
+          end.uniq { |simulator| simulator.udid }
         end
 
         def scan_options_for_worker(test_batch, batch_index)

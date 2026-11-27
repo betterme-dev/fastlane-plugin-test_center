@@ -326,10 +326,26 @@ module TestCenter::Helper::MultiScanManager
           destination: ["platform=iOS Simulator,id=A00", "platform=iOS Simulator,id=BAF"],
           quit_simulators: true
         )
-        expect(helper).to receive(:`).with('xcrun simctl shutdown A00 2>/dev/null')
-        expect(helper).to receive(:`).with('xcrun simctl boot A00 2>/dev/null')
-        expect(helper).to receive(:`).with('xcrun simctl shutdown BAF 2>/dev/null')
-        expect(helper).to receive(:`).with('xcrun simctl boot BAF 2>/dev/null')
+        expect(SimulatorBooter).to receive(:shutdown).with('A00')
+        expect(SimulatorBooter).to receive(:boot).with('A00')
+        expect(SimulatorBooter).to receive(:shutdown).with('BAF')
+        expect(SimulatorBooter).to receive(:boot).with('BAF')
+        helper.quit_simulator
+      end
+
+      it 'stops before the test run when a simulator does not finish booting' do
+        helper = RetryingScanHelper.new(destination: ["platform=iOS Simulator,id=A00"], quit_simulators: true)
+        allow(SimulatorBooter).to receive(:shutdown).with('A00')
+        allow(SimulatorBooter).to receive(:boot).and_raise('boot failed')
+
+        expect { helper.quit_simulator }.to raise_error('boot failed')
+      end
+
+      it 'does not try to boot a physical device destination' do
+        helper = RetryingScanHelper.new(destination: ["platform=iOS,id=A00"], quit_simulators: true)
+        expect(SimulatorBooter).not_to receive(:shutdown)
+        expect(SimulatorBooter).not_to receive(:boot)
+
         helper.quit_simulator
       end
 

@@ -46,7 +46,7 @@ module FastlaneCore
     end
 
     describe '#boot' do
-      it 'properly boots the simulator' do
+      it 'waits for the simulator to finish booting before marking it booted' do
         original = DeviceManager::Device.new(
           name: 'quadriceps',
           udid: 'ABCDEFGHIJK',
@@ -55,7 +55,37 @@ module FastlaneCore
           state: 'Shutdown',
           is_simulator: true
         )
-        expect(original).to receive(:`).with(/xcrun simctl boot ABCDEFGHIJK/)
+        expect(TestCenter::Helper::MultiScanManager::SimulatorBooter).to receive(:boot).with('ABCDEFGHIJK')
+        original.boot
+        expect(original.state).to eq('Booted')
+      end
+
+      it 'keeps the simulator unbooted when bootstatus fails' do
+        original = DeviceManager::Device.new(
+          name: 'quadriceps',
+          udid: 'ABCDEFGHIJK',
+          os_type: 'iOS',
+          os_version: '10.2',
+          state: 'Shutdown',
+          is_simulator: true
+        )
+        allow(TestCenter::Helper::MultiScanManager::SimulatorBooter).to receive(:boot).and_raise('boot failed')
+
+        expect { original.boot }.to raise_error('boot failed')
+        expect(original.state).to eq('Shutdown')
+      end
+
+      it 'waits even when the cached simulator state is Booted' do
+        original = DeviceManager::Device.new(
+          name: 'quadriceps',
+          udid: 'ABCDEFGHIJK',
+          os_type: 'iOS',
+          os_version: '10.2',
+          state: 'Booted',
+          is_simulator: true
+        )
+        expect(TestCenter::Helper::MultiScanManager::SimulatorBooter).to receive(:boot).with('ABCDEFGHIJK')
+
         original.boot
       end
     end
@@ -70,7 +100,7 @@ module FastlaneCore
           state: 'Booted',
           is_simulator: true
         )
-        expect(original).to receive(:`).with(/xcrun simctl shutdown ABCDEFGHIJK/)
+        expect(TestCenter::Helper::MultiScanManager::SimulatorBooter).to receive(:shutdown).with('ABCDEFGHIJK')
         original.shutdown
       end
 
@@ -83,7 +113,7 @@ module FastlaneCore
           state: 'Shutdown',
           is_simulator: true
         )
-        expect(original).not_to receive(:`).with(/xcrun simctl shutdown ABCDEFGHIJK/)
+        expect(TestCenter::Helper::MultiScanManager::SimulatorBooter).not_to receive(:shutdown)
         original.shutdown
       end
     end
