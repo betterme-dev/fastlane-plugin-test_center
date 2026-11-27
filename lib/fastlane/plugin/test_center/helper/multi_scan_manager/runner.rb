@@ -282,7 +282,9 @@ module TestCenter
               matching_simulators.select! { |simulator| Gem::Version.new(simulator.os_version) == latest_version }
             end
 
-            raise "No simulator matches destination #{destination}" if matching_simulators.empty?
+            if matching_simulators.empty?
+              FastlaneCore::UI.user_error!("No simulator matches destination '#{destination}'. Check the destination's name, OS version or id.")
+            end
 
             matching_simulators.each(&:boot)
             matching_simulators

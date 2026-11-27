@@ -125,6 +125,24 @@ module TestCenter::Helper::MultiScanManager
             expect { pool.setup_workers }.to raise_error('boot failed')
           end
 
+          it 'boots cloned simulators in parallel' do
+            pool = TestBatchWorkerPool.new({parallel_testrun_count: 4, platform: :ios_simulator})
+            allow(pool).to receive(:at_exit)
+            clones = @mocked_cloned_simulators.flatten
+            all_booting = Queue.new
+            clones.each do |simulator|
+              allow(simulator).to receive(:boot) do
+                all_booting << simulator
+                # Blocks until every clone has started booting; deadlocks (-> timeout) if boots are sequential.
+                Timeout.timeout(2) { sleep 0.01 while all_booting.size < clones.size }
+              end
+            end
+
+            pool.setup_cloned_simulators
+
+            expect(all_booting.size).to eq(clones.size)
+          end
+
           it 'clones simulators' do
             pool = TestBatchWorkerPool.new({parallel_testrun_count: 4, platform: :ios_simulator})
             expect(@mocked_simulator_helper).to receive(:parallel_destination_simulators).and_return(@mocked_cloned_simulators)

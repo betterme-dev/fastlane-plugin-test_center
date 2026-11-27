@@ -38,7 +38,8 @@ module TestCenter
           # testmanagerd connection failures.
           @clones.flatten.each(&:shutdown)
           @clones.flatten.each(&:disable_hardware_keyboard)
-          @clones.flatten.each(&:boot)
+          # Boot in parallel so a stuck simulator costs one timeout, not one per clone.
+          @clones.flatten.map { |simulator| Thread.new { simulator.boot } }.each(&:value)
           SimulatorHelper.call_simulator_started_callback(@options, @clones.flatten)
           @clones
         end

@@ -4,7 +4,7 @@ module TestCenter
   module Helper
     module MultiScanManager
       class SimulatorBooter
-        BOOT_TIMEOUT = 300
+        BOOT_TIMEOUT = 120
         SHUTDOWN_TIMEOUT = 30
         MAX_ATTEMPTS = 2
 

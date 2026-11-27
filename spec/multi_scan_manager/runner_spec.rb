@@ -225,6 +225,17 @@ module TestCenter::Helper::MultiScanManager
         expect(events).to eq([:boot, [:callback, 'B00'], :run])
       end
 
+      it 'aborts with a user error when no simulator matches a destination' do
+        allow(Scan).to receive(:devices).and_return([OpenStruct.new(udid: 'A00')])
+        allow(Scan).to receive(:config).and_return(destination: ['platform=iOS Simulator,id=NOPE'])
+        allow(FastlaneCore::DeviceManager).to receive(:simulators).with('iOS').and_return([OpenStruct.new(udid: 'B00')])
+        allow(TestBatchWorkerPool).to receive(:new).and_return(OpenStruct.new)
+
+        runner = Runner.new(platform: :ios_simulator, try_count: 1)
+
+        expect { runner.run_test_batches }.to raise_error(FastlaneCore::Interface::FastlaneError, /No simulator matches destination 'platform=iOS Simulator,id=NOPE'/)
+      end
+
       it 'waits for a serial invocation batch with only_testing set' do
         events = []
         device = OpenStruct.new(udid: 'A00')
